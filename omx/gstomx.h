@@ -25,6 +25,7 @@
 
 #include <gmodule.h>
 #include <gst/gst.h>
+#include <gst/video/video.h>
 #include <string.h>
 
 #ifdef HAVE_CONFIG_H
@@ -281,6 +282,67 @@ struct _GstOMXClassData {
 
   GstOmxComponentType type;
 };
+
+#define GST_OMX_BUFFER_POOL(pool) ((GstOMXBufferPool *) pool)
+typedef struct _GstOMXBufferPool GstOMXBufferPool;
+typedef struct _GstOMXBufferPoolClass GstOMXBufferPoolClass;
+
+struct _GstOMXBufferPool
+{
+  GstVideoBufferPool parent;
+
+  GstElement *element;
+
+  GstCaps *caps;
+  gboolean add_videometa;
+  GstVideoInfo video_info;
+
+  /* Owned by element, element has to stop this pool before
+   * it destroys component or port */
+  GstOMXComponent *component;
+  GstOMXPort *port;
+
+  /* For handling OpenMAX allocated memory */
+  GstAllocator *allocator;
+
+  /* Set from outside this pool */
+  /* TRUE if we're currently allocating all our buffers */
+  gboolean allocating;
+
+  /* TRUE if the pool is not used anymore */
+  gboolean deactivated;
+
+  /* For populating the pool from another one */
+  GstBufferPool *other_pool;
+  GPtrArray *buffers;
+
+  /* Used during acquire for output ports to
+   * specify which buffer has to be retrieved
+   * and during alloc, which buffer has to be
+   * wrapped
+   */
+  gint current_buffer_index;
+};
+
+struct _GstOMXBufferPoolClass
+{
+  GstVideoBufferPoolClass parent_class;
+};
+
+GstBufferPool *
+gst_omx_buffer_pool_new (GstElement * element, GstOMXComponent * component,
+    GstOMXPort * port);
+
+GType gst_omx_buffer_pool_get_type (void);
+
+typedef struct _BufferIdentification BufferIdentification;
+struct _BufferIdentification
+{
+  guint64 timestamp;
+};
+
+void
+buffer_identification_free (BufferIdentification * id);
 
 GKeyFile *        gst_omx_get_configuration (void);
 

@@ -55,18 +55,6 @@ gst_omx_video_enc_control_rate_get_type (void)
   return qtype;
 }
 
-typedef struct _BufferIdentification BufferIdentification;
-struct _BufferIdentification
-{
-  guint64 timestamp;
-};
-
-static void
-buffer_identification_free (BufferIdentification * id)
-{
-  g_slice_free (BufferIdentification, id);
-}
-
 /* prototypes */
 static void gst_omx_video_enc_finalize (GObject * object);
 static void gst_omx_video_enc_set_property (GObject * object, guint prop_id,
