@@ -361,12 +361,15 @@ void              gst_omx_component_free (GstOMXComponent * comp);
 
 OMX_ERRORTYPE     gst_omx_component_set_state (GstOMXComponent * comp, OMX_STATETYPE state);
 OMX_STATETYPE     gst_omx_component_get_state (GstOMXComponent * comp, GstClockTime timeout);
+OMX_ERRORTYPE     gst_omx_component_wait_state_changed (GstOMXComponent * comp, OMX_STATETYPE state, GstClockTime timeout);
 
 OMX_ERRORTYPE     gst_omx_component_get_last_error (GstOMXComponent * comp);
 const gchar *     gst_omx_component_get_last_error_string (GstOMXComponent * comp);
 
 GstOMXPort *      gst_omx_component_add_port (GstOMXComponent * comp, guint32 index);
 GstOMXPort *      gst_omx_component_get_port (GstOMXComponent * comp, guint32 index);
+gboolean          gst_omx_component_add_all_ports (GstOMXComponent * comp);
+gboolean          gst_omx_component_all_ports_set_enabled (GstOMXComponent * comp, gboolean enabled);
 
 OMX_ERRORTYPE     gst_omx_component_get_parameter (GstOMXComponent * comp, OMX_INDEXTYPE index, gpointer param);
 OMX_ERRORTYPE     gst_omx_component_set_parameter (GstOMXComponent * comp, OMX_INDEXTYPE index, gpointer param);
