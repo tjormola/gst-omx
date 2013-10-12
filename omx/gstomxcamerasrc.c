@@ -1303,15 +1303,17 @@ gst_omx_camera_src_stop_capturing_unlocked (GstOMXCameraSrc * self)
 
   GST_DEBUG_OBJECT (self, "Stopping video capture");
 
-  while (!self->camera) {
-    GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
-    GST_LIVE_WAIT (self);
+  if (!self->camera) {
+    GST_DEBUG_OBJECT (self, "Camera not opened, return");
+    res = TRUE;
+    goto done;
   }
 
-  while (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateExecuting) {
-    GST_DEBUG_OBJECT (self, "Camera not in executing state, waiting");
-    GST_LIVE_WAIT (self);
+    GST_DEBUG_OBJECT (self, "Camera not in executing state, return");
+    res = TRUE;
+    goto done;
   }
 
   // Capture off
@@ -1381,15 +1383,17 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
 
   GST_DEBUG_OBJECT (self, "Disabling video capture");
 
-  while (!self->camera) {
-    GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
-    GST_LIVE_WAIT (self);
+  if (!self->camera) {
+    GST_DEBUG_OBJECT (self, "Camera not opened, return");
+    res = TRUE;
+    goto done;
   }
 
-  while (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateExecuting) {
-    GST_DEBUG_OBJECT (self, "Camera not in executing state, waiting");
-    GST_LIVE_WAIT (self);
+    GST_DEBUG_OBJECT (self, "Camera not in executing state, return");
+    res = TRUE;
+    goto done;
   }
 
   // Disable ports
@@ -1499,9 +1503,9 @@ gst_omx_camera_src_close_camera_unlocked (GstOMXCameraSrc *self)
 
   GST_DEBUG_OBJECT (self, "Closing camera");
 
-  while (!self->camera) {
-    GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
-    GST_LIVE_WAIT (self);
+  if (!self->camera) {
+    GST_DEBUG_OBJECT (self, "Camera not opened, return");
+    goto done;
   }
 
   while (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
