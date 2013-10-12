@@ -268,6 +268,7 @@ static GstFlowReturn gst_omx_camera_src_fill (GstPushSrc * push_src,
     GstBuffer * buf);
 
 static gboolean gst_omx_camera_src_start (GstBaseSrc * base_src);
+static gboolean gst_omx_camera_src_stop (GstBaseSrc * base_src);
 static GstCaps * gst_omx_camera_src_get_caps (GstBaseSrc * base_src,
     GstCaps * filter);
 static GstCaps * gst_omx_camera_src_fixate (GstBaseSrc * base_src,
@@ -434,6 +435,7 @@ gst_omx_camera_src_class_init (GstOMXCameraSrcClass * klass)
   element_class->change_state = gst_omx_camera_src_change_state;
 
   basesrc_class->start = GST_DEBUG_FUNCPTR (gst_omx_camera_src_start);
+  basesrc_class->stop = GST_DEBUG_FUNCPTR (gst_omx_camera_src_stop);
   basesrc_class->get_caps = GST_DEBUG_FUNCPTR (gst_omx_camera_src_get_caps);
   basesrc_class->fixate = GST_DEBUG_FUNCPTR (gst_omx_camera_src_fixate);
   basesrc_class->set_caps = GST_DEBUG_FUNCPTR (gst_omx_camera_src_set_caps);
@@ -684,20 +686,6 @@ done:
   GST_DEBUG_OBJECT (self, "Opened camera, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
-
-  return res;
-}
-
-static gboolean
-gst_omx_camera_src_open_camera (GstOMXCameraSrc * self)
-{
-  gboolean res;
-
-  GST_LIVE_LOCK (self);
-
-  res = gst_omx_camera_src_open_camera_unlocked (self);
-
-  GST_LIVE_UNLOCK (self);
 
   return res;
 }
@@ -1048,20 +1036,6 @@ done:
   GST_DEBUG_OBJECT (self, "Video configured, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
-
-  return res;
-}
-
-static gboolean
-gst_omx_camera_src_configure_camera (GstOMXCameraSrc * self)
-{
-  gboolean res;
-
-  GST_LIVE_LOCK (self);
-
-  res = gst_omx_camera_src_configure_camera_unlocked (self);
-
-  GST_LIVE_UNLOCK (self);
 
   return res;
 }
@@ -1799,8 +1773,13 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   self->accum_frames = 0;
   self->accum_rtime = 0;
 
-  res = TRUE;
+  res = gst_omx_camera_src_open_camera_unlocked (self);
+  if (!res)
+    goto done;
 
+  res = gst_omx_camera_src_configure_camera_unlocked (self);
+
+done:
   GST_LIVE_UNLOCK (self);
 
   // TODO: Not calling gst_base_src_start_complete() because it seems to be
@@ -1851,6 +1830,21 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   //gst_base_src_start_complete (base_src, (res ? GST_FLOW_OK : GST_FLOW_ERROR));
 
   GST_DEBUG_OBJECT (self, "Started, %s", (res ? "ok" : "failing"));
+
+  return res;
+}
+
+static gboolean
+gst_omx_camera_src_stop (GstBaseSrc * base_src)
+{
+  GstOMXCameraSrc *self = GST_OMX_CAMERA_SRC (base_src);
+  gboolean res;
+
+  GST_DEBUG_OBJECT (self, "Stopping");
+
+  res = gst_omx_camera_src_close_camera (self);
+
+  GST_DEBUG_OBJECT (self, "Stopped, %s", (res ? "ok" : "failing"));
 
   return res;
 }
@@ -2166,11 +2160,6 @@ gst_omx_camera_src_change_state (GstElement * element, GstStateChange transition
   // functions is that maybe we'd like to support pause and then you'd only
   // need to call stop/stop functions when switching between play/pause states
   switch (transition) {
-    case GST_STATE_CHANGE_NULL_TO_READY:
-      if (!(gst_omx_camera_src_open_camera (self) &&
-            gst_omx_camera_src_configure_camera (self)))
-        res = GST_STATE_CHANGE_FAILURE;
-      break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
       if (!(gst_omx_camera_src_enable_capturing (self) &&
             gst_omx_camera_src_start_capturing (self)))
@@ -2179,10 +2168,6 @@ gst_omx_camera_src_change_state (GstElement * element, GstStateChange transition
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       if (!(gst_omx_camera_src_stop_capturing (self) &&
             gst_omx_camera_src_disable_capturing (self)))
-        res = GST_STATE_CHANGE_FAILURE;
-      break;
-    case GST_STATE_CHANGE_READY_TO_NULL:
-      if (!gst_omx_camera_src_close_camera (self))
         res = GST_STATE_CHANGE_FAILURE;
       break;
     default: break;
