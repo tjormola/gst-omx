@@ -603,6 +603,7 @@ static gboolean
 gst_omx_camera_src_open_camera_unlocked (GstOMXCameraSrc * self)
 {
   GstOMXSrcClass *klass = GST_OMX_SRC_GET_CLASS (self);
+  gboolean res;
   gint in_port_index, out_port_index;
 
   GST_DEBUG_OBJECT (self, "Opening camera");
@@ -614,23 +615,27 @@ gst_omx_camera_src_open_camera_unlocked (GstOMXCameraSrc * self)
 
   if (!self->camera) {
     GST_ERROR_OBJECT (self, "Error while creating camera component");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera state is not loaded");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   if (!gst_omx_component_add_all_ports (self->camera)) {
     GST_ERROR_OBJECT (self, "Error while adding ports to camera");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   if (!gst_omx_component_all_ports_set_enabled (self->camera, FALSE)) {
     GST_ERROR_OBJECT (self, "Error while disabling camera ports");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   in_port_index = klass->cdata.in_port_index;
@@ -665,18 +670,22 @@ gst_omx_camera_src_open_camera_unlocked (GstOMXCameraSrc * self)
 
   if (!self->camera_in_port || !self->camera_out_port) {
     GST_ERROR_OBJECT (self, "Error while detecting camera ports");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   // TODO: On RPi, open the camera preview port
 
   // TODO: On RPi, open encoder and null sink components and their ports
 
-  GST_DEBUG_OBJECT (self, "Opened camera");
+  res = TRUE;
+
+done:
+  GST_DEBUG_OBJECT (self, "Opened camera, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -697,7 +706,7 @@ gst_omx_camera_src_open_camera (GstOMXCameraSrc * self)
 static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     * self)
 {
-
+  gboolean res;
   OMX_ERRORTYPE err;
 
   GST_DEBUG_OBJECT (self, "Configuring camera");
@@ -710,7 +719,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
   if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   /*
@@ -729,7 +739,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     GST_ERROR_OBJECT (self,
         "Error setting device change callback: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   */
 
@@ -745,7 +756,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error setting parameter device number %u: %s (0x%08x)",
         self->config.device.nU32,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
 #ifdef USE_OMX_TARGET_RPI
@@ -756,7 +768,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config sharpness %d: %s (0x%08x)",
         self->config.sharpness.nSharpness,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 #endif
 
@@ -768,7 +781,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
           "Error while setting config gamma %d: %s (0x%08x)",
           self->config.gamma.nGamma,
           gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
     }
   }
 
@@ -779,7 +793,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config contrast %d: %s (0x%08x)",
         self->config.contrast.nContrast,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -789,7 +804,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config brightness %u: %s (0x%08x)",
         self->config.brightness.nBrightness,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -799,7 +815,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config saturation %d: %s (0x%08x)",
         self->config.saturation.nSaturation,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -809,7 +826,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config image filter %d: %s (0x%08x)",
         self->config.image_filter.eImageFilter,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -820,7 +838,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         self->config.color_enhancement.nCustomizedU,
         self->config.color_enhancement.nCustomizedV,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -830,7 +849,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config white balance %d: %s (0x%08x)",
         self->config.white_balance.eWhiteBalControl,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -840,7 +860,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config exposure control %d: %s (0x%08x)",
         self->config.exposure_control.eExposureControl,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -858,7 +879,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         self->config.exposure_value.bAutoAperture,
         self->config.exposure_value.nApertureFNumber,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_component_set_config (self->camera,
@@ -869,7 +891,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config frame stabilistaion %d: %s (0x%08x)",
         self->config.frame_stabilisation.bStab,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   self->config.mirror.nPortIndex = self->camera_out_port->index;
@@ -880,7 +903,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
         "Error while setting config mirror %d: %s (0x%08x)",
         self->config.mirror.eMirror,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   // TODO: On RPi, configure the camera preview output port (70)
@@ -888,12 +912,14 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
   // camera video output port (71)
 
   self->camera_configured = TRUE;
+  res = TRUE;
 
-  GST_DEBUG_OBJECT (self, "Camera configured");
+done:
+  GST_DEBUG_OBJECT (self, "Camera configured, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 /* LIVE_LOCK needs to be hold */
@@ -901,6 +927,7 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
     * self)
 {
 
+  gboolean res;
   gdouble fps;
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
   OMX_CONFIG_FRAMERATETYPE framerate;
@@ -923,7 +950,8 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
   if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   gst_util_fraction_to_double (GST_VIDEO_INFO_FPS_N (self->info),
@@ -943,7 +971,8 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
         "camera output port %u: %s (0x%08x)",
         self->camera_out_port->index,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   port_def = self->camera_out_port->port_def;
   port_def.format.video.nFrameWidth = GST_VIDEO_INFO_WIDTH (self->info);
@@ -966,7 +995,8 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
         "output port %u: %s (0x%08x)",
         port_def.nPortIndex,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   GST_OMX_INIT_STRUCT (&framerate);
@@ -979,7 +1009,8 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
         "output port %u: %s (0x%08x)",
         self->camera_out_port->index,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   framerate.xEncodeFramerate = port_def.format.video.xFramerate;
   err =
@@ -990,7 +1021,8 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
         "Error while setting config framerate %d: %s (0x%08x)",
         framerate.xEncodeFramerate >> 16,
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   // TODO: On RPi, configure camera preview port defintion with the settings
@@ -1010,12 +1042,14 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
   // settings. http://www.raspberrypi.org/wp-content/uploads/2013/07/RaspiCam-Documentation.pdf
 
   self->video_configured = TRUE;
+  res = TRUE;
 
-  GST_DEBUG_OBJECT (self, "Video configured");
+done:
+  GST_DEBUG_OBJECT (self, "Video configured, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1036,6 +1070,7 @@ gst_omx_camera_src_configure_camera (GstOMXCameraSrc * self)
 static gboolean
 gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
 {
+  gboolean res;
   OMX_ERRORTYPE err;
 
   GST_DEBUG_OBJECT (self, "Enabling video capture");
@@ -1053,7 +1088,8 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
   if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   // TODO: Implement proper error handling i.e. roll back all the steps so far
@@ -1066,14 +1102,16 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to idle: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_component_wait_state_changed (self->camera,
       OMX_StateIdle, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch to idle state: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle encoder and null sink
 
@@ -1083,28 +1121,32 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while enabling "
         "camera input port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_set_enabled (self->camera_out_port, TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while enabling "
         "camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_set_flushing (self->camera_in_port, 1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
         "on camera input port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_set_flushing (self->camera_out_port, 1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
         "on camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle camera preview output, null sink input and encoder
   // input and output ports.
@@ -1115,14 +1157,16 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while allocating buffers for "
         "camera input port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_allocate_buffers (self->camera_out_port);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while allocating buffers for "
         "camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, don't allocate buffers on camera video output port but on
   // encoder output port if encoder is being used.
@@ -1133,7 +1177,8 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while setting camera state to "
         "executing: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_component_wait_state_changed (self->camera,
       OMX_StateExecuting, 1 * GST_SECOND);
@@ -1141,15 +1186,19 @@ gst_omx_camera_src_enable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Camera didn't switch to executing "
         "state: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle encoder and null sink
 
-  GST_DEBUG_OBJECT (self, "Video capturing enabled");
+  res = TRUE;
+
+done:
+  GST_DEBUG_OBJECT (self, "Video capturing enabled, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1170,6 +1219,7 @@ gst_omx_camera_src_enable_capturing (GstOMXCameraSrc * self)
 static gboolean
 gst_omx_camera_src_start_capturing_unlocked (GstOMXCameraSrc * self)
 {
+  gboolean res;
   OMX_CONFIG_PORTBOOLEANTYPE capture;
   OMX_ERRORTYPE err;
 
@@ -1201,7 +1251,8 @@ gst_omx_camera_src_start_capturing_unlocked (GstOMXCameraSrc * self)
         "Error while enabling video capture on "
         "camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   err = gst_omx_port_populate (self->camera_out_port);
@@ -1209,15 +1260,19 @@ gst_omx_camera_src_start_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self,
         "Error while populating camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, populate encoder output instead if encoder is being used
 
-  GST_DEBUG_OBJECT (self, "Video capturing started");
+  res = TRUE;
+
+done:
+  GST_DEBUG_OBJECT (self, "Video capturing started, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1238,7 +1293,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
 static gboolean
 gst_omx_camera_src_stop_capturing_unlocked (GstOMXCameraSrc * self)
 {
-
+  gboolean res;
   OMX_CONFIG_PORTBOOLEANTYPE capture;
   OMX_ERRORTYPE err;
 
@@ -1270,7 +1325,8 @@ gst_omx_camera_src_stop_capturing_unlocked (GstOMXCameraSrc * self)
         "Error while disabling video capture on "
         "camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
 
   // Flush buffers
@@ -1280,7 +1336,8 @@ gst_omx_camera_src_stop_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self,
         "Error while flushing camera input port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_set_flushing (self->camera_out_port,
       1 * GST_SECOND, TRUE);
@@ -1288,15 +1345,17 @@ gst_omx_camera_src_stop_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self,
         "Error while flushing camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle other ports also
 
-  GST_DEBUG_OBJECT (self, "Video capturing stopped");
+done:
+  GST_DEBUG_OBJECT (self, "Video capturing stopped, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1317,6 +1376,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
 static gboolean
 gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
 {
+  gboolean res;
   OMX_ERRORTYPE err;
 
   GST_DEBUG_OBJECT (self, "Disabling video capture");
@@ -1338,14 +1398,16 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while disabling "
         "camera input port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_set_enabled (self->camera_out_port, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while disabling "
         "camera output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle other ports also
 
@@ -1355,14 +1417,16 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while dellocating "
         "camera input port buffers: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_port_deallocate_buffers (self->camera_out_port);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while dellocating "
         "camera output port buffers: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, use encoder output port if encoder is being used
 
@@ -1372,14 +1436,16 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to idle: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_component_wait_state_changed (self->camera,
       OMX_StateIdle, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch to idle state: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle the other components also
 
@@ -1389,7 +1455,8 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to loaded: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   err = gst_omx_component_wait_state_changed (self->camera,
       OMX_StateLoaded, 1 * GST_SECOND);
@@ -1397,15 +1464,17 @@ gst_omx_camera_src_disable_capturing_unlocked (GstOMXCameraSrc * self)
     GST_ERROR_OBJECT (self, "Camera didn't switch "
         "to loaded state: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
-    return FALSE;
+    res = FALSE;
+    goto done;
   }
   // TODO: On RPi, handle the other components also
 
-  GST_DEBUG_OBJECT (self, "Video capturing disabled");
+done:
+  GST_DEBUG_OBJECT (self, "Video capturing disabled, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1426,6 +1495,7 @@ gst_omx_camera_src_disable_capturing (GstOMXCameraSrc * self)
 static gboolean
 gst_omx_camera_src_close_camera_unlocked (GstOMXCameraSrc *self)
 {
+  gboolean res = TRUE;
 
   GST_DEBUG_OBJECT (self, "Closing camera");
 
@@ -1450,11 +1520,12 @@ gst_omx_camera_src_close_camera_unlocked (GstOMXCameraSrc *self)
   self->camera_configured = FALSE;
   self->video_configured = FALSE;
 
-  GST_DEBUG_OBJECT (self, "Closed camera");
+done:
+  GST_DEBUG_OBJECT (self, "Closed camera, %s", (res ? "ok" : "failing"));
 
   GST_LIVE_BROADCAST (self);
 
-  return TRUE;
+  return res;
 }
 
 static gboolean
@@ -1713,6 +1784,7 @@ static gboolean
 gst_omx_camera_src_start (GstBaseSrc * base_src)
 {
   GstOMXCameraSrc *self = GST_OMX_CAMERA_SRC (base_src);
+  gboolean res;
 
   GST_LIVE_LOCK (self);
 
@@ -1722,6 +1794,8 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   self->n_frames = 0;
   self->accum_frames = 0;
   self->accum_rtime = 0;
+
+  res = TRUE;
 
   GST_LIVE_UNLOCK (self);
 
@@ -1770,9 +1844,11 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   //
   // Is this analysis correct and there's a bug in basesrc.c or am I just
   // stupid?
-  //gst_base_src_start_complete (base_src, GST_FLOW_OK);
+  //gst_base_src_start_complete (base_src, (res ? GST_FLOW_OK : GST_FLOW_ERROR));
 
-  return TRUE;
+  GST_DEBUG_OBJECT (self, "Started, %s", (res ? "ok" : "failing"));
+
+  return res;
 }
 
 static GstCaps * gst_omx_camera_src_get_caps (GstBaseSrc * base_src,
@@ -1952,7 +2028,7 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
     if (!gst_video_info_from_caps (omx_buf_info, omx_buf_caps)) {
       GST_ERROR_OBJECT (self, "Invalid format %" GST_PTR_FORMAT, omx_buf_caps);
       g_free (omx_buf_info);
-      return FALSE;
+      res = FALSE;
     }
     if (self->omx_buf_info)
       g_free (self->omx_buf_info);
@@ -1961,6 +2037,8 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
 
 done:
   GST_LIVE_UNLOCK (self);
+
+  GST_DEBUG_OBJECT (self, "Set caps, %s", (res ? "ok" : "failing"));
 
   return res;
 }
@@ -2105,6 +2183,8 @@ gst_omx_camera_src_change_state (GstElement * element, GstStateChange transition
       break;
     default: break;
   }
+
+  GST_DEBUG_OBJECT (self, "Change state, %s", (res ? "ok" : "failing"));
 
   return res;
 }
