@@ -275,8 +275,6 @@ static GstCaps * gst_omx_camera_src_fixate (GstBaseSrc * base_src,
     GstCaps * caps);
 static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
     GstCaps * caps);
-static void gst_omx_camera_src_get_times (GstBaseSrc * base_src,
-    GstBuffer * buffer, GstClockTime * start, GstClockTime * end);
 static gboolean gst_omx_camera_src_decide_allocation (GstBaseSrc *base_src,
     GstQuery *query);
 
@@ -439,7 +437,6 @@ gst_omx_camera_src_class_init (GstOMXCameraSrcClass * klass)
   basesrc_class->get_caps = GST_DEBUG_FUNCPTR (gst_omx_camera_src_get_caps);
   basesrc_class->fixate = GST_DEBUG_FUNCPTR (gst_omx_camera_src_fixate);
   basesrc_class->set_caps = GST_DEBUG_FUNCPTR (gst_omx_camera_src_set_caps);
-  basesrc_class->get_times = GST_DEBUG_FUNCPTR (gst_omx_camera_src_get_times);
   basesrc_class->decide_allocation = GST_DEBUG_FUNCPTR (gst_omx_camera_src_decide_allocation);
 
   pushsrc_class->fill = GST_DEBUG_FUNCPTR (gst_omx_camera_src_fill);
@@ -2039,52 +2036,6 @@ done:
   GST_DEBUG_OBJECT (self, "Set caps, %s", (res ? "ok" : "failing"));
 
   return res;
-}
-
-static void gst_omx_camera_src_get_times (GstBaseSrc * base_src,
-    GstBuffer * buffer, GstClockTime * start, GstClockTime * end)
-{
-
-  GstOMXCameraSrc * self = GST_OMX_CAMERA_SRC (base_src);
-
-  *start = GST_CLOCK_TIME_NONE;
-  *end = GST_CLOCK_TIME_NONE;
-
-  // Try setting start and end with offset based time calculation
-  if (GST_BUFFER_OFFSET_IS_VALID (buffer)) {
-    GstClockTime duration = GST_CLOCK_TIME_NONE;
-    if (GST_BUFFER_DURATION_IS_VALID (buffer)) {
-      duration = GST_BUFFER_DURATION (buffer);
-    } else {
-      if (GST_VIDEO_INFO_FPS_N (self->info) > 0) {
-        duration =
-            gst_util_uint64_scale_int (GST_SECOND,
-                GST_VIDEO_INFO_FPS_D (self->info),
-                GST_VIDEO_INFO_FPS_N (self->info));
-      }
-    }
-    if (GST_CLOCK_TIME_IS_VALID (duration)) {
-      *start = (GST_BUFFER_OFFSET (buffer) - self->accum_frames) * duration;
-      *end = *start + duration;
-    }
-  } else {
-    // Otherwise try setting start and end with timestamp based calculation
-    if (GST_BUFFER_DTS_IS_VALID (buffer)) {
-      *start = GST_BUFFER_DTS (buffer);
-      if (GST_BUFFER_DURATION_IS_VALID (buffer)) {
-        *end = *start + GST_BUFFER_DURATION (buffer);
-      } else {
-        if (GST_VIDEO_INFO_FPS_N (self->info) > 0) {
-          *end = *start +
-              gst_util_uint64_scale_int (GST_SECOND,
-                  GST_VIDEO_INFO_FPS_D (self->info),
-                  GST_VIDEO_INFO_FPS_N (self->info));
-        } else {
-          *start = GST_CLOCK_TIME_NONE;
-        }
-      }
-    }
-  }
 }
 
 static gboolean gst_omx_camera_src_decide_allocation (GstBaseSrc *base_src,
