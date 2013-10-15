@@ -712,7 +712,8 @@ gst_omx_component_free (GstOMXComponent * comp)
     for (i = 0; i < n; i++) {
       GstOMXPort *port = g_ptr_array_index (comp->ports, i);
 
-      gst_omx_port_deallocate_buffers (port);
+      if (!port->tunneled)
+        gst_omx_port_deallocate_buffers (port);
       g_assert (port->buffers == NULL);
       g_assert (g_queue_get_length (&port->pending_buffers) == 0);
 
