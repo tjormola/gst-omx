@@ -473,6 +473,10 @@ gst_omx_camera_src_init (GstOMXCameraSrc * self)
 {
   gint n_comp = 1;    // Camera
   gint n_port = 2;    // Camera in & out
+#ifdef USE_OMX_TARGET_RPI
+  n_comp += 1;        // Null sink
+  n_port += 2;        // Camera preview, null sink in
+#endif
   self->comp = (GstOMXComponent **)g_new0 (GstOMXComponent, n_comp);
   self->port = (GstOMXPort **)g_new0 (GstOMXPort, n_port);
   self->camera_configured = FALSE;
@@ -591,7 +595,7 @@ gst_omx_camera_src_is_capture_active (GstOMXCameraSrc * self)
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while checking video capture state on "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     return FALSE;
   }
@@ -797,16 +801,27 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
       OMX_IndexConfigCommonMirror, &self->config.mirror);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error while setting config mirror %d: %s (0x%08x)",
+        "Error while setting config mirror %d on "
+        "camera video output port: %s (0x%08x)",
         self->config.mirror.eMirror,
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-
-  // TODO: On RPi, configure the camera preview output port (70)
-  // and encoder output port port definitions to match the settings of the
-  // camera video output port (71)
+#ifdef USE_OMX_TARGET_RPI
+  self->config.mirror.nPortIndex = self->port[CAMERA_PREVIEW_OUT]->index;
+  err = gst_omx_component_set_config (self->comp[CAMERA],
+      OMX_IndexConfigCommonMirror, &self->config.mirror);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error while setting config mirror %d on "
+        "camera preview output port: %s (0x%08x)",
+        self->config.mirror.eMirror,
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
 
   self->camera_configured = TRUE;
   res = TRUE;
@@ -865,8 +880,7 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while getting port definition for "
-        "camera output port %u: %s (0x%08x)",
-        self->port[CAMERA_VIDEO_OUT]->index,
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -888,23 +902,35 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
       &port_def);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error setting parameter port definition for camera video "
-        "output port %u: %s (0x%08x)",
-        port_def.nPortIndex,
+        "Error setting parameter port definition for "
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
 
+#ifdef USE_OMX_TARGET_RPI
+  port_def.nPortIndex = self->port[CAMERA_PREVIEW_OUT]->index;
+  err = gst_omx_port_update_port_definition (self->port[CAMERA_PREVIEW_OUT],
+      &port_def);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error setting parameter port definition for "
+        "camera preview output port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
+
   GST_OMX_INIT_STRUCT (&framerate);
-  framerate.nPortIndex = port_def.nPortIndex;
+  framerate.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
   err = gst_omx_component_get_config (self->comp[CAMERA],
         OMX_IndexConfigVideoFramerate, &framerate);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error getting config framerate for camera video "
-        "output port %u: %s (0x%08x)",
-        self->port[CAMERA_VIDEO_OUT]->index,
+        "Error getting config framerate for "
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -915,28 +941,33 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
       OMX_IndexConfigVideoFramerate, &framerate);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error while setting config framerate %d: %s (0x%08x)",
+        "Error while setting config framerate %d for "
+        "camera video output port: %s (0x%08x)",
         framerate.xEncodeFramerate >> 16,
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
 
-  // TODO: On RPi, configure camera preview port defintion with the settings
-  // from camera video output port definition. Also configure the encoder
-  // output with the selected codec if the downstream caps requires us to
-  // pass the camera video data through the encoder.
+#ifdef USE_OMX_TARGET_RPI
+  framerate.nPortIndex = self->port[CAMERA_PREVIEW_OUT]->index;
+  err =
+      gst_omx_component_set_config (self->comp[CAMERA],
+      OMX_IndexConfigVideoFramerate, &framerate);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error while setting config framerate %d for "
+        "camera preview output port: %s (0x%08x)",
+        framerate.xEncodeFramerate >> 16,
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
 
-  // TODO: On RPi, probably here is the spot where we would tunnel the camera
-  // preview output to null sink input and camera video output to encoder
-  // input if that's needed, see just above. See this for justification
-  // why preview port should be opened and directed to null sink:
-  // The preview display is optional, but can be used full screen or directed
-  // to a specific rectangular area on the display. If preview is disabled,
-  // the null_sink component is used to 'absorb' the preview frames. It is
-  // necessary for the camera to produce preview frames even if not required
-  // for display, as they are used for calculating exposure and white balance
-  // settings. http://www.raspberrypi.org/wp-content/uploads/2013/07/RaspiCam-Documentation.pdf
+  // TODO: On RPi, configure the encoder output with the selected codec if the
+  // downstream caps requires us to pass the camera video data through the
+  // encoder.
 
   self->video_configured = TRUE;
   res = TRUE;
@@ -981,6 +1012,32 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   // done if an error is encoutered so that the state we're going to return is
   // the same as when entering this function.
 
+#ifdef USE_OMX_TARGET_RPI
+  while (!self->comp[NULL_SINK]) {
+    GST_DEBUG_OBJECT (self, "Null sink not opened, waiting");
+    GST_LIVE_WAIT (self);
+  }
+
+  if (gst_omx_component_get_state (self->comp[NULL_SINK], GST_CLOCK_TIME_NONE) !=
+      OMX_StateLoaded) {
+    GST_ERROR_OBJECT (self, "Null sink not in loaded state");
+    res = FALSE;
+    goto done;
+  }
+
+  // Tunnel camera preview and null sink
+  err = gst_omx_component_setup_tunnel (self->comp[CAMERA],
+      self->port[CAMERA_PREVIEW_OUT],
+      self->comp[NULL_SINK], self->port[NULL_SINK_IN]);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while tunneling camera preview output port "
+        "to null sink input port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
+
   // State to idle
   err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateIdle);
   if (err != OMX_ErrorNone) {
@@ -998,7 +1055,26 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle encoder and null sink
+
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_component_set_state (self->comp[NULL_SINK], OMX_StateIdle);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while setting null sink state "
+        "to idle: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_component_wait_state_changed (self->comp[NULL_SINK],
+      OMX_StateIdle, 1 * GST_SECOND);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Null sink didn't switch to idle state: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
   // Enable ports
   err = gst_omx_port_set_enabled (self->port[CAMERA_IN], TRUE);
@@ -1012,12 +1088,31 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   err = gst_omx_port_set_enabled (self->port[CAMERA_VIDEO_OUT], TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while enabling "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_flushing (self->port[CAMERA_IN], 1 * GST_SECOND, FALSE);
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_port_set_enabled (self->port[CAMERA_PREVIEW_OUT], TRUE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while enabling "
+        "camera preview output port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_port_set_enabled (self->port[NULL_SINK_IN], TRUE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while enabling "
+        "null sink input port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
+  err = gst_omx_port_set_flushing (self->port[CAMERA_IN],
+      1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
         "on camera input port: %s (0x%08x)",
@@ -1025,16 +1120,36 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_flushing (self->port[CAMERA_VIDEO_OUT], 1 * GST_SECOND, FALSE);
+  err = gst_omx_port_set_flushing (self->port[CAMERA_VIDEO_OUT],
+      1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
-        "on camera output port: %s (0x%08x)",
+        "on camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle camera preview output, null sink input and encoder
-  // input and output ports.
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_port_set_flushing (self->port[CAMERA_PREVIEW_OUT],
+      1 * GST_SECOND, FALSE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while switching flush off "
+        "on camera preview output port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_port_set_flushing (self->port[NULL_SINK_IN],
+      1 * GST_SECOND, FALSE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while switching flush off "
+        "on null sink input port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+#endif
+  // TODO: On RPi, handle encoder input and output ports.
 
   // Allocate buffers
   err = gst_omx_port_allocate_buffers (self->port[CAMERA_IN]);
@@ -1048,7 +1163,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   err = gst_omx_port_allocate_buffers (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while allocating buffers for "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -1074,7 +1189,27 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle encoder and null sink
+
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_component_set_state (self->comp[NULL_SINK], OMX_StateExecuting);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while setting null sink state to "
+        "executing: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_component_wait_state_changed (self->comp[NULL_SINK],
+      OMX_StateExecuting, 1 * GST_SECOND);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Null sink didn't switch to executing "
+        "state: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
   // Capture on
   GST_OMX_INIT_STRUCT (&capture);
@@ -1085,7 +1220,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while enabling video capture on "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -1094,7 +1229,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   err = gst_omx_port_populate (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error while populating camera output port: %s (0x%08x)",
+        "Error while populating camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -1141,6 +1276,21 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     goto done;
   }
 
+#ifdef USE_OMX_TARGET_RPI
+  if (!self->comp[NULL_SINK]) {
+    GST_DEBUG_OBJECT (self, "Null sink not opened, return");
+    res = TRUE;
+    goto done;
+  }
+
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
+      OMX_StateExecuting) {
+    GST_DEBUG_OBJECT (self, "Null sink not in executing state, return");
+    res = TRUE;
+    goto done;
+  }
+#endif
+
   // Capture off
   GST_OMX_INIT_STRUCT (&capture);
   capture.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
@@ -1150,7 +1300,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while disabling video capture on "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -1170,12 +1320,32 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
       1 * GST_SECOND, TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
-        "Error while flushing camera output port: %s (0x%08x)",
+        "Error while flushing camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle other ports also
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_port_set_flushing (self->port[CAMERA_PREVIEW_OUT],
+      1 * GST_SECOND, TRUE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error while flushing camera preview output port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_port_set_flushing (self->port[NULL_SINK_IN],
+      1 * GST_SECOND, TRUE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error while flushing null sink input port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
   // Disable ports
   err = gst_omx_port_set_enabled (self->port[CAMERA_IN], FALSE);
@@ -1189,12 +1359,30 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   err = gst_omx_port_set_enabled (self->port[CAMERA_VIDEO_OUT], FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while disabling "
-        "camera output port: %s (0x%08x)",
+        "camera video output port: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle other ports also
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_port_set_enabled (self->port[CAMERA_PREVIEW_OUT], FALSE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while disabling "
+        "camera preview output port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_port_set_enabled (self->port[NULL_SINK_IN], FALSE);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while disabling "
+        "null sink input port: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
   // Free buffers
   err = gst_omx_port_deallocate_buffers (self->port[CAMERA_IN]);
@@ -1208,7 +1396,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   err = gst_omx_port_deallocate_buffers (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while dellocating "
-        "camera output port buffers: %s (0x%08x)",
+        "camera video output port buffers: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
@@ -1232,7 +1420,25 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle the other components also
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_component_set_state (self->comp[NULL_SINK], OMX_StateIdle);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while setting null sink state "
+        "to idle: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_component_wait_state_changed (self->comp[NULL_SINK],
+      OMX_StateIdle, 1 * GST_SECOND);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Null sink didn't switch to idle state: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
   // State to loaded
   err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateLoaded);
@@ -1252,7 +1458,26 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  // TODO: On RPi, handle the other components also
+#ifdef USE_OMX_TARGET_RPI
+  err = gst_omx_component_set_state (self->comp[NULL_SINK], OMX_StateLoaded);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Error while setting null sink state "
+        "to loaded: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  err = gst_omx_component_wait_state_changed (self->comp[NULL_SINK],
+      OMX_StateLoaded, 1 * GST_SECOND);
+  if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self, "Null sink didn't switch "
+        "to loaded state: %s (0x%08x)",
+        gst_omx_error_to_string (err), err);
+    res = FALSE;
+    goto done;
+  }
+  // TODO: On RPi, handle encoder
+#endif
 
 done:
   GST_DEBUG_OBJECT (self, "Video capturing stopped, %s", (res ? "ok" : "failing"));
@@ -1504,6 +1729,9 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   GstOMXSrcClass *klass = GST_OMX_SRC_GET_CLASS (self);
   gboolean res;
   gint in_port_index, out_port_index;
+#ifdef USE_OMX_TARGET_RPI
+  gint null_sink_in_port_index = -1;
+#endif
 
   GST_LIVE_LOCK (self);
 
@@ -1547,28 +1775,6 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   in_port_index = klass->cdata.in_port_index;
   out_port_index = klass->cdata.out_port_index;
 
-  if (in_port_index == -1 || out_port_index == -1) {
-    OMX_PORT_PARAM_TYPE param;
-    OMX_ERRORTYPE err;
-
-    GST_OMX_INIT_STRUCT (&param);
-
-    err =
-        gst_omx_component_get_parameter (self->comp[CAMERA], OMX_IndexParamVideoInit,
-        &param);
-    if (err != OMX_ErrorNone) {
-      GST_WARNING_OBJECT (self, "Couldn't get port information: %s (0x%08x)",
-          gst_omx_error_to_string (err), err);
-      in_port_index = 0;
-      out_port_index = 1;
-    } else {
-      GST_DEBUG_OBJECT (self, "Detected %u ports, starting at %u",
-          (guint) param.nPorts, (guint) param.nStartPortNumber);
-      in_port_index = param.nStartPortNumber + 0;
-      out_port_index = param.nStartPortNumber + 1;
-    }
-  }
-
   self->port[CAMERA_IN] = gst_omx_component_get_port (self->comp[CAMERA],
       in_port_index);
   self->port[CAMERA_VIDEO_OUT] = gst_omx_component_get_port (self->comp[CAMERA],
@@ -1580,9 +1786,79 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
     goto done;
   }
 
-  // TODO: On RPi, open the camera preview port
+#ifdef USE_OMX_TARGET_RPI
+  // Preview port for camera
+  self->port[CAMERA_PREVIEW_OUT] =
+    gst_omx_component_get_port (self->comp[CAMERA], out_port_index - 1);
 
-  // TODO: On RPi, open encoder and null sink components and their ports
+  if (!self->port[CAMERA_PREVIEW_OUT]) {
+    GST_ERROR_OBJECT (self, "Error while opening camera preview port");
+    res = FALSE;
+    goto done;
+  }
+
+  // Null sink
+  self->comp[NULL_SINK] =
+      gst_omx_component_new (GST_OBJECT_CAST (self), klass->cdata.core_name,
+        "OMX.broadcom.null_sink", NULL,
+        0);
+
+  if (!self->comp[NULL_SINK]) {
+    GST_ERROR_OBJECT (self, "Error while creating null sink component");
+    res = FALSE;
+    goto done;
+  }
+
+  if (gst_omx_component_get_state (self->comp[NULL_SINK], GST_CLOCK_TIME_NONE) !=
+      OMX_StateLoaded) {
+    GST_ERROR_OBJECT (self, "Null sink state is not loaded");
+    res = FALSE;
+    goto done;
+  }
+
+  if (!gst_omx_component_add_all_ports (self->comp[NULL_SINK])) {
+    GST_ERROR_OBJECT (self, "Error while adding ports to null sink");
+    res = FALSE;
+    goto done;
+  }
+
+  if (!gst_omx_component_all_ports_set_enabled (self->comp[NULL_SINK], FALSE)) {
+    GST_ERROR_OBJECT (self, "Error while disabling null sink ports");
+    res = FALSE;
+    goto done;
+  }
+
+  {
+    OMX_PORT_PARAM_TYPE param;
+    OMX_ERRORTYPE err;
+
+    GST_OMX_INIT_STRUCT (&param);
+
+    err =
+        gst_omx_component_get_parameter (self->comp[NULL_SINK], OMX_IndexParamVideoInit,
+        &param);
+    if (err != OMX_ErrorNone) {
+      GST_WARNING_OBJECT (self, "Couldn't get port information: %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+      res = FALSE;
+      goto done;
+    } else {
+      GST_DEBUG_OBJECT (self, "Detected %u ports, starting at %u",
+          (guint) param.nPorts, (guint) param.nStartPortNumber);
+      null_sink_in_port_index = param.nStartPortNumber;
+    }
+  }
+
+  // In port for null sink
+  self->port[NULL_SINK_IN] =
+    gst_omx_component_get_port (self->comp[NULL_SINK], null_sink_in_port_index);
+
+  if (!self->port[NULL_SINK_IN]) {
+    GST_ERROR_OBJECT (self, "Error while opening null sink in port");
+    res = FALSE;
+    goto done;
+  }
+#endif
 
   res = gst_omx_camera_src_configure_camera_unlocked (self);
 
@@ -1663,12 +1939,35 @@ gst_omx_camera_src_stop (GstBaseSrc * base_src)
     GST_LIVE_WAIT (self);
   }
 
+#ifdef USE_OMX_TARGET_RPI
+  if (!self->comp[NULL_SINK]) {
+    GST_DEBUG_OBJECT (self, "Null sink not opened, return");
+    res = FALSE;
+    goto done;
+  }
+
+  while (gst_omx_component_get_state (self->comp[NULL_SINK], GST_CLOCK_TIME_NONE) !=
+      OMX_StateLoaded) {
+    GST_DEBUG_OBJECT (self, "Null sink not in loaded state, waiting");
+    GST_LIVE_WAIT (self);
+  }
+#endif
+
   self->port[CAMERA_IN] = NULL;
   self->port[CAMERA_VIDEO_OUT] = NULL;
+#ifdef USE_OMX_TARGET_RPI
+  self->port[CAMERA_PREVIEW_OUT] = NULL;
+  self->port[NULL_SINK_IN] = NULL;
+#endif
+
   if (self->comp[CAMERA])
     gst_omx_component_free (self->comp[CAMERA]);
   self->comp[CAMERA] = NULL;
-  // TODO: On RPi, handle the other components and ports also
+#ifdef USE_OMX_TARGET_RPI
+  if (self->comp[NULL_SINK])
+    gst_omx_component_free (self->comp[NULL_SINK]);
+  self->comp[NULL_SINK] = NULL;
+#endif
 
   self->camera_configured = FALSE;
   self->video_configured = FALSE;
