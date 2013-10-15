@@ -2149,22 +2149,23 @@ gst_omx_camera_src_change_state (GstElement * element, GstStateChange transition
 
   self = GST_OMX_CAMERA_SRC (element);
 
-  res =
-      GST_ELEMENT_CLASS (parent_class)->change_state (element,
-      transition);
-
-  if (res == GST_STATE_CHANGE_FAILURE)
-    return res;
-
   // The idea behind separa enable/disable capturing and start/stop capturing
   // functions is that maybe we'd like to support pause and then you'd only
   // need to call stop/stop functions when switching between play/pause states
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
       if (!(gst_omx_camera_src_enable_capturing (self) &&
-            gst_omx_camera_src_start_capturing (self)))
+            gst_omx_camera_src_start_capturing (self))) {
         res = GST_STATE_CHANGE_FAILURE;
+        goto done;
+      }
       break;
+    default: break;
+  }
+
+  res = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+
+  switch (transition) {
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       if (!(gst_omx_camera_src_stop_capturing (self) &&
             gst_omx_camera_src_disable_capturing (self)))
@@ -2173,6 +2174,7 @@ gst_omx_camera_src_change_state (GstElement * element, GstStateChange transition
     default: break;
   }
 
+done:
   GST_DEBUG_OBJECT (self, "Change state, %s", (res ? "ok" : "failing"));
 
   return res;
