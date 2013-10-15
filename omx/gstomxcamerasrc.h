@@ -61,13 +61,16 @@ typedef struct _GstOMXCameraSrcConfig GstOMXCameraSrcConfig;
 
 enum _GstOMXCameraSrcCompIndices
 {
-  CAMERA = 0
+  CAMERA = 0,
+  NULL_SINK = 1
 };
 
 enum _GstOMXCameraSrcPortIndices
 {
   CAMERA_IN = 0,
-  CAMERA_VIDEO_OUT = 1
+  CAMERA_VIDEO_OUT = 1,
+  CAMERA_PREVIEW_OUT = 2,
+  NULL_SINK_IN = 3
 };
 
 struct _GstOMXCameraSrcConfig
