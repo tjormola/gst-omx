@@ -44,7 +44,8 @@ GST_DEBUG_CATEGORY_STATIC (gst_omx_camera_src_debug_category);
 #define GST_OMX_CAMERA_SRC_BRIGHTNESS_DEFAULT                  50
 #define GST_OMX_CAMERA_SRC_SATURATION_DEFAULT                  0
 #define GST_OMX_CAMERA_SRC_IMAGE_FILTER_DEFAULT                OMX_ImageFilterNone
-#define GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_DEFAULT           NULL
+#define GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_U_CHANNEL_DEFAULT 0
+#define GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_V_CHANNEL_DEFAULT 0
 #define GST_OMX_CAMERA_SRC_WHITE_BALANCE_MODE_DEFAULT          OMX_WhiteBalControlAuto
 #define GST_OMX_CAMERA_SRC_EXPOSURE_CONTROL_MODE_DEFAULT       OMX_ExposureControlAuto
 #define GST_OMX_CAMERA_SRC_EXPOSURE_METERING_MODE_DEFAULT      OMX_MeteringModeSpot
@@ -67,7 +68,8 @@ enum
   PROP_BRIGHTNESS,
   PROP_SATURATION,
   PROP_IMAGE_FILTER,
-  PROP_COLOR_ENHANCEMENT,
+  PROP_COLOR_ENHANCEMENT_U_CHANNEL,
+  PROP_COLOR_ENHANCEMENT_V_CHANNEL,
   PROP_WHITE_BALANCE_MODE,
   PROP_EXPOSURE_CONTROL_MODE,
   PROP_EXPOSURE_METERING_MODE,
@@ -369,13 +371,22 @@ gst_omx_camera_src_class_init (GstOMXCameraSrcClass * klass)
           GST_OMX_CAMERA_SRC_IMAGE_FILTER_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (G_OBJECT_CLASS (klass),
-      PROP_COLOR_ENHANCEMENT,
-      g_param_spec_string ("color-enhancement", "Color enhancement effect",
-          "Specify color enhancement effect in format \"U:V\" where U and V "
-              "are integers in the range 0 - 255  that are applied as "
-              "constants to the U and V channels of the image, "
-              "e.g. 128:128 results in a monochrome image",
-          GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_DEFAULT,
+      PROP_COLOR_ENHANCEMENT_U_CHANNEL,
+      g_param_spec_uint ("color-enhancement-u-channel",
+          "Color enhancement effect for U channel",
+          "Specify color enhancement effect for image U channel. If this "
+          "property is set, also  color-enhancement-v-channel should be set. "
+          "Setting e.g. both properties to 128 results in a monochrome image.",
+          0, 255, GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_U_CHANNEL_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (G_OBJECT_CLASS (klass),
+      PROP_COLOR_ENHANCEMENT_V_CHANNEL,
+      g_param_spec_uint ("color-enhancement-v-channel",
+          "Color enhancement effect for V channel",
+          "Specify color enhancement effect for image V channel. If this "
+          "property is set, also  color-enhancement-u-channel should be set. "
+          "Setting e.g. both properties to 128 results in a monochrome image.",
+          0, 255, GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_V_CHANNEL_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (G_OBJECT_CLASS (klass),
       PROP_EXPOSURE_CONTROL_MODE,
@@ -498,6 +509,10 @@ gst_omx_camera_src_init (GstOMXCameraSrc * self)
     GST_OMX_CAMERA_SRC_IMAGE_FILTER_DEFAULT;
   self->config.color_enhancement.nPortIndex = OMX_ALL;
   self->config.color_enhancement.bColorEnhancement = FALSE;
+  self->config.color_enhancement.nCustomizedU =
+    GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_U_CHANNEL_DEFAULT;
+  self->config.color_enhancement.nCustomizedV =
+    GST_OMX_CAMERA_SRC_COLOR_ENHANCEMENT_V_CHANNEL_DEFAULT;
   self->config.white_balance.nPortIndex = OMX_ALL;
   self->config.white_balance.eWhiteBalControl =
     GST_OMX_CAMERA_SRC_WHITE_BALANCE_MODE_DEFAULT;
@@ -556,23 +571,6 @@ static GstCaps * gst_omx_camera_src_default_caps (GstOMXCameraSrc * self)
     GST_OMX_CAMERA_SRC_WIDTH_DEFAULT,
     GST_OMX_CAMERA_SRC_HEIGHT_DEFAULT,
     GST_OMX_CAMERA_SRC_FRAMERATE_DEFAULT);
-}
-
-static gboolean gst_omx_camera_src_config_color_enhancement_set_from_string (OMX_CONFIG_COLORENHANCEMENTTYPE * ce,
-    const gchar * string)
-{
-  gint u, v;
-
-  if (sscanf (string, "%d:%d", &u, &v) != 2)
-    return FALSE;
-
-  if (u < 0 || u > 255 || v < 0 || v > 255)
-    return FALSE;
-
-  ce->nCustomizedU = u;
-  ce->nCustomizedV = v;
-
-  return TRUE;
 }
 
 static gboolean
@@ -1645,11 +1643,6 @@ done:
   return TRUE;
 }
 
-static gchar * gst_omx_camera_src_config_color_enhancement_to_string (const OMX_CONFIG_COLORENHANCEMENTTYPE * ce)
-{
-  return g_strdup_printf ("%d:%d", ce->nCustomizedU, ce->nCustomizedV);
-}
-
 static void gst_omx_camera_src_update_mirror_mode (GstOMXCameraSrc * self)
 {
   self->config.mirror.eMirror = OMX_MirrorNone;
@@ -2193,13 +2186,16 @@ gst_omx_camera_src_set_property (GObject * object, guint prop_id,
     case PROP_IMAGE_FILTER:
       self->config.image_filter.eImageFilter = g_value_get_enum (value);
       break;
-    case PROP_COLOR_ENHANCEMENT:
+    case PROP_COLOR_ENHANCEMENT_U_CHANNEL:
       GST_LIVE_LOCK (self);
-      if (gst_omx_camera_src_config_color_enhancement_set_from_string (&self->config.color_enhancement,
-            g_value_get_string (value)))
-        self->config.color_enhancement.bColorEnhancement = TRUE;
-      else
-        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      self->config.color_enhancement.bColorEnhancement = TRUE;
+      self->config.color_enhancement.nCustomizedU = g_value_get_uint (value);
+      GST_LIVE_UNLOCK (self);
+      break;
+    case PROP_COLOR_ENHANCEMENT_V_CHANNEL:
+      GST_LIVE_LOCK (self);
+      self->config.color_enhancement.bColorEnhancement = TRUE;
+      self->config.color_enhancement.nCustomizedV = g_value_get_uint (value);
       GST_LIVE_UNLOCK (self);
       break;
     case PROP_WHITE_BALANCE_MODE:
@@ -2272,14 +2268,11 @@ gst_omx_camera_src_get_property (GObject * object, guint prop_id, GValue * value
     case PROP_IMAGE_FILTER:
       g_value_set_enum (value, self->config.image_filter.eImageFilter);
       break;
-    case PROP_COLOR_ENHANCEMENT:
-      if (self->config.color_enhancement.bColorEnhancement) {
-        gchar *str = gst_omx_camera_src_config_color_enhancement_to_string (&self->config.color_enhancement);
-        g_value_set_string (value, str);
-        g_free (str);
-      }
-      else
-        g_value_set_string (value, NULL);
+    case PROP_COLOR_ENHANCEMENT_U_CHANNEL:
+      g_value_set_uint (value, self->config.color_enhancement.nCustomizedU);
+      break;
+    case PROP_COLOR_ENHANCEMENT_V_CHANNEL:
+      g_value_set_uint (value, self->config.color_enhancement.nCustomizedV);
       break;
     case PROP_EXPOSURE_CONTROL_MODE:
       g_value_set_enum (value, self->config.exposure_control.eExposureControl);
