@@ -471,6 +471,10 @@ gst_omx_camera_src_class_init (GstOMXCameraSrcClass * klass)
 static void
 gst_omx_camera_src_init (GstOMXCameraSrc * self)
 {
+  gint n_comp = 1;    // Camera
+  gint n_port = 2;    // Camera in & out
+  self->comp = (GstOMXComponent **)g_new0 (GstOMXComponent, n_comp);
+  self->port = (GstOMXPort **)g_new0 (GstOMXPort, n_port);
   self->camera_configured = FALSE;
   self->video_configured = FALSE;
   GST_OMX_INIT_STRUCT (&self->config.device);
@@ -581,8 +585,8 @@ gst_omx_camera_src_is_capture_active (GstOMXCameraSrc * self)
 
   // Capture on
   GST_OMX_INIT_STRUCT (&capture);
-  capture.nPortIndex = self->camera_out_port->index;
-  err = gst_omx_component_get_parameter (self->camera,
+  capture.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
+  err = gst_omx_component_get_parameter (self->comp[CAMERA],
       OMX_IndexConfigPortCapturing, &capture);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -604,12 +608,12 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
 
   GST_DEBUG_OBJECT (self, "Configuring camera");
 
-  while (!self->camera) {
+  while (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
     GST_LIVE_WAIT (self);
   }
 
-  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
     res = FALSE;
@@ -626,7 +630,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
   cbtype.nPortIndex = OMX_ALL;
   cbtype.nIndex = OMX_IndexParamCameraDeviceNumber;
   cbtype.bEnable = OMX_TRUE;
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigRequestCallback, &self->cbtype);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -642,7 +646,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
   // nData2 == OMX_IndexParamCameraDeviceNumber which
   // the GstOMX event handler should trap and inform us about it
   // somehow. This should probably be implemented in gtsomx.c.
-  err = gst_omx_component_set_parameter (self->camera,
+  err = gst_omx_component_set_parameter (self->comp[CAMERA],
       OMX_IndexParamCameraDeviceNumber, &self->config.device);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -654,7 +658,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
   }
 
 #ifdef USE_OMX_TARGET_RPI
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonSharpness, &self->config.sharpness);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -667,7 +671,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
 #endif
 
   if (self->config.gamma.nGamma != 0) {
-    err = gst_omx_component_set_config (self->camera,
+    err = gst_omx_component_set_config (self->comp[CAMERA],
         OMX_IndexConfigCommonGamma, &self->config.gamma);
     if (err != OMX_ErrorNone) {
       GST_ERROR_OBJECT (self,
@@ -679,7 +683,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     }
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonContrast, &self->config.contrast);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -690,7 +694,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonBrightness, &self->config.brightness);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -701,7 +705,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonSaturation, &self->config.saturation);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -712,7 +716,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonImageFilter, &self->config.image_filter);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -723,7 +727,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonColorEnhancement, &self->config.color_enhancement);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -735,7 +739,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonWhiteBalance, &self->config.white_balance);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -746,7 +750,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonExposure, &self->config.exposure_control);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -757,7 +761,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
         OMX_IndexConfigCommonExposure, &self->config.exposure_value);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -776,7 +780,7 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  err = gst_omx_component_set_config (self->camera,
+  err = gst_omx_component_set_config (self->comp[CAMERA],
         OMX_IndexConfigCommonFrameStabilisation,
         &self->config.frame_stabilisation);
   if (err != OMX_ErrorNone) {
@@ -788,8 +792,8 @@ static gboolean gst_omx_camera_src_configure_camera_unlocked (GstOMXCameraSrc
     goto done;
   }
 
-  self->config.mirror.nPortIndex = self->camera_out_port->index;
-  err = gst_omx_component_set_config (self->camera,
+  self->config.mirror.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
+  err = gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigCommonMirror, &self->config.mirror);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -826,7 +830,7 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
   OMX_CONFIG_FRAMERATETYPE framerate;
   OMX_ERRORTYPE err;
 
-  while (!self->camera) {
+  while (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
     GST_LIVE_WAIT (self);
   }
@@ -840,7 +844,7 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
   // stopping the capture, configure and then start capture if we're playing.
   // But for now, just flat-out refuse that.
 
-  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
     res = FALSE;
@@ -857,17 +861,17 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
       GST_VIDEO_INFO_PAR_D (self->info),
       fps);
 
-  err = gst_omx_port_update_port_definition (self->camera_out_port, NULL);
+  err = gst_omx_port_update_port_definition (self->port[CAMERA_VIDEO_OUT], NULL);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while getting port definition for "
         "camera output port %u: %s (0x%08x)",
-        self->camera_out_port->index,
+        self->port[CAMERA_VIDEO_OUT]->index,
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
-  port_def = self->camera_out_port->port_def;
+  port_def = self->port[CAMERA_VIDEO_OUT]->port_def;
   port_def.format.video.nFrameWidth = GST_VIDEO_INFO_WIDTH (self->info);
   port_def.format.video.nFrameHeight = GST_VIDEO_INFO_HEIGHT (self->info);
   port_def.format.video.xFramerate = ((OMX_U32)fps) << 16;
@@ -880,7 +884,7 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
     port_def.format.video.nStride =
         GST_ROUND_UP_4 (port_def.format.video.nFrameWidth);
 
-  err = gst_omx_port_update_port_definition (self->camera_out_port,
+  err = gst_omx_port_update_port_definition (self->port[CAMERA_VIDEO_OUT],
       &port_def);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -894,20 +898,20 @@ static gboolean gst_omx_camera_src_configure_video_unlocked (GstOMXCameraSrc
 
   GST_OMX_INIT_STRUCT (&framerate);
   framerate.nPortIndex = port_def.nPortIndex;
-  err = gst_omx_component_get_config (self->camera,
+  err = gst_omx_component_get_config (self->comp[CAMERA],
         OMX_IndexConfigVideoFramerate, &framerate);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error getting config framerate for camera video "
         "output port %u: %s (0x%08x)",
-        self->camera_out_port->index,
+        self->port[CAMERA_VIDEO_OUT]->index,
         gst_omx_error_to_string (err), err);
     res = FALSE;
     goto done;
   }
   framerate.xEncodeFramerate = port_def.format.video.xFramerate;
   err =
-      gst_omx_component_set_config (self->camera,
+      gst_omx_component_set_config (self->comp[CAMERA],
       OMX_IndexConfigVideoFramerate, &framerate);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -956,7 +960,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
 
   GST_DEBUG_OBJECT (self, "Starting video capture");
 
-  while (!self->camera) {
+  while (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
     GST_LIVE_WAIT (self);
   }
@@ -966,7 +970,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     GST_LIVE_WAIT (self);
   }
 
-  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera not in loaded state");
     res = FALSE;
@@ -978,7 +982,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   // the same as when entering this function.
 
   // State to idle
-  err = gst_omx_component_set_state (self->camera, OMX_StateIdle);
+  err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateIdle);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to idle: %s (0x%08x)",
@@ -986,7 +990,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_component_wait_state_changed (self->camera,
+  err = gst_omx_component_wait_state_changed (self->comp[CAMERA],
       OMX_StateIdle, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch to idle state: %s (0x%08x)",
@@ -997,7 +1001,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   // TODO: On RPi, handle encoder and null sink
 
   // Enable ports
-  err = gst_omx_port_set_enabled (self->camera_in_port, TRUE);
+  err = gst_omx_port_set_enabled (self->port[CAMERA_IN], TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while enabling "
         "camera input port: %s (0x%08x)",
@@ -1005,7 +1009,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_enabled (self->camera_out_port, TRUE);
+  err = gst_omx_port_set_enabled (self->port[CAMERA_VIDEO_OUT], TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while enabling "
         "camera output port: %s (0x%08x)",
@@ -1013,7 +1017,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_flushing (self->camera_in_port, 1 * GST_SECOND, FALSE);
+  err = gst_omx_port_set_flushing (self->port[CAMERA_IN], 1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
         "on camera input port: %s (0x%08x)",
@@ -1021,7 +1025,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_flushing (self->camera_out_port, 1 * GST_SECOND, FALSE);
+  err = gst_omx_port_set_flushing (self->port[CAMERA_VIDEO_OUT], 1 * GST_SECOND, FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while switching flush off "
         "on camera output port: %s (0x%08x)",
@@ -1033,7 +1037,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   // input and output ports.
 
   // Allocate buffers
-  err = gst_omx_port_allocate_buffers (self->camera_in_port);
+  err = gst_omx_port_allocate_buffers (self->port[CAMERA_IN]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while allocating buffers for "
         "camera input port: %s (0x%08x)",
@@ -1041,7 +1045,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_allocate_buffers (self->camera_out_port);
+  err = gst_omx_port_allocate_buffers (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while allocating buffers for "
         "camera output port: %s (0x%08x)",
@@ -1053,7 +1057,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
   // encoder output port if encoder is being used.
 
   // State to executing
-  err = gst_omx_component_set_state (self->camera, OMX_StateExecuting);
+  err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateExecuting);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while setting camera state to "
         "executing: %s (0x%08x)",
@@ -1061,7 +1065,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_component_wait_state_changed (self->camera,
+  err = gst_omx_component_wait_state_changed (self->comp[CAMERA],
       OMX_StateExecuting, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch to executing "
@@ -1074,9 +1078,9 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
 
   // Capture on
   GST_OMX_INIT_STRUCT (&capture);
-  capture.nPortIndex = self->camera_out_port->index;
+  capture.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
   capture.bEnabled = OMX_TRUE;
-  err = gst_omx_component_set_parameter (self->camera,
+  err = gst_omx_component_set_parameter (self->comp[CAMERA],
       OMX_IndexConfigPortCapturing, &capture);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -1087,7 +1091,7 @@ gst_omx_camera_src_start_capturing (GstOMXCameraSrc * self)
     goto done;
   }
 
-  err = gst_omx_port_populate (self->camera_out_port);
+  err = gst_omx_port_populate (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error while populating camera output port: %s (0x%08x)",
@@ -1124,13 +1128,13 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
 
   GST_DEBUG_OBJECT (self, "Stopping video capture");
 
-  if (!self->camera) {
+  if (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, return");
     res = TRUE;
     goto done;
   }
 
-  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateExecuting) {
     GST_DEBUG_OBJECT (self, "Camera not in executing state, return");
     res = TRUE;
@@ -1139,9 +1143,9 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
 
   // Capture off
   GST_OMX_INIT_STRUCT (&capture);
-  capture.nPortIndex = self->camera_out_port->index;
+  capture.nPortIndex = self->port[CAMERA_VIDEO_OUT]->index;
   capture.bEnabled = OMX_FALSE;
-  err = gst_omx_component_set_parameter (self->camera,
+  err = gst_omx_component_set_parameter (self->comp[CAMERA],
       OMX_IndexConfigPortCapturing, &capture);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -1153,7 +1157,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   }
 
   // Flush buffers
-  err = gst_omx_port_set_flushing (self->camera_in_port,
+  err = gst_omx_port_set_flushing (self->port[CAMERA_IN],
       1 * GST_SECOND, TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -1162,7 +1166,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_flushing (self->camera_out_port,
+  err = gst_omx_port_set_flushing (self->port[CAMERA_VIDEO_OUT],
       1 * GST_SECOND, TRUE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
@@ -1174,7 +1178,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   // TODO: On RPi, handle other ports also
 
   // Disable ports
-  err = gst_omx_port_set_enabled (self->camera_in_port, FALSE);
+  err = gst_omx_port_set_enabled (self->port[CAMERA_IN], FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while disabling "
         "camera input port: %s (0x%08x)",
@@ -1182,7 +1186,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_set_enabled (self->camera_out_port, FALSE);
+  err = gst_omx_port_set_enabled (self->port[CAMERA_VIDEO_OUT], FALSE);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while disabling "
         "camera output port: %s (0x%08x)",
@@ -1193,7 +1197,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   // TODO: On RPi, handle other ports also
 
   // Free buffers
-  err = gst_omx_port_deallocate_buffers (self->camera_in_port);
+  err = gst_omx_port_deallocate_buffers (self->port[CAMERA_IN]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while dellocating "
         "camera input port buffers: %s (0x%08x)",
@@ -1201,7 +1205,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_port_deallocate_buffers (self->camera_out_port);
+  err = gst_omx_port_deallocate_buffers (self->port[CAMERA_VIDEO_OUT]);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while dellocating "
         "camera output port buffers: %s (0x%08x)",
@@ -1212,7 +1216,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   // TODO: On RPi, use encoder output port if encoder is being used
 
   // State to idle
-  err = gst_omx_component_set_state (self->camera, OMX_StateIdle);
+  err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateIdle);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to idle: %s (0x%08x)",
@@ -1220,7 +1224,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_component_wait_state_changed (self->camera,
+  err = gst_omx_component_wait_state_changed (self->comp[CAMERA],
       OMX_StateIdle, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch to idle state: %s (0x%08x)",
@@ -1231,7 +1235,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
   // TODO: On RPi, handle the other components also
 
   // State to loaded
-  err = gst_omx_component_set_state (self->camera, OMX_StateLoaded);
+  err = gst_omx_component_set_state (self->comp[CAMERA], OMX_StateLoaded);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Error while setting camera state "
         "to loaded: %s (0x%08x)",
@@ -1239,7 +1243,7 @@ gst_omx_camera_src_stop_capturing (GstOMXCameraSrc * self)
     res = FALSE;
     goto done;
   }
-  err = gst_omx_component_wait_state_changed (self->camera,
+  err = gst_omx_component_wait_state_changed (self->comp[CAMERA],
       OMX_StateLoaded, 1 * GST_SECOND);
   if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Camera didn't switch "
@@ -1293,7 +1297,7 @@ gboolean gst_omx_camera_src_poll_frame (GstOMXCameraSrc *self,
   // OMX_COLOR_FormatYUV420PackedPlanar in OpenMAX IL 1.1.2 spec. p. 198-201.
   // We shall loop until we get enough buffers so that the whole frame
   // has been fully received, hopefully.
-  buf_slice_height = self->camera_out_port->port_def.format.video.nSliceHeight;
+  buf_slice_height = self->port[CAMERA_VIDEO_OUT]->port_def.format.video.nSliceHeight;
   buf_discard_spans =
                (buf_slice_height && (frame_height % buf_slice_height))
              ? (buf_slice_height - (frame_height % buf_slice_height))
@@ -1301,7 +1305,7 @@ gboolean gst_omx_camera_src_poll_frame (GstOMXCameraSrc *self,
 
   while (!eof) {
 
-    acq_return = gst_omx_port_acquire_buffer (self->camera_out_port, &buf);
+    acq_return = gst_omx_port_acquire_buffer (self->port[CAMERA_VIDEO_OUT], &buf);
 
     if (acq_return == GST_OMX_ACQUIRE_BUFFER_OK && 
         buf->omx_buf->nFlags & OMX_BUFFERFLAG_DATACORRUPT) {
@@ -1365,7 +1369,7 @@ done:
         frame_bytes_copied, frame_size,
         valid_spans_y, max_spans_y, valid_spans_uv, max_spans_uv);
 
-    err = gst_omx_port_release_buffer (self->camera_out_port, buf);
+    err = gst_omx_port_release_buffer (self->port[CAMERA_VIDEO_OUT], buf);
     if (err != OMX_ErrorNone) {
       GST_ERROR_OBJECT (self,
           "Error while releasing buffer: %s (0x%08x)",
@@ -1420,12 +1424,12 @@ gst_omx_camera_src_fill (GstPushSrc * push_src, GstBuffer * buffer)
   GST_LOG_OBJECT (self,
       "Creating buffer from pool for frame %d", (gint) self->n_frames);
 
-  while (!self->camera) {
+  while (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, waiting");
     GST_LIVE_WAIT (self);
   }
 
-  while (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  while (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateExecuting) {
     GST_DEBUG_OBJECT (self, "Camera not in executing state, waiting");
     GST_LIVE_WAIT (self);
@@ -1510,31 +1514,31 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
   self->accum_frames = 0;
   self->accum_rtime = 0;
 
-  self->camera =
+  self->comp[CAMERA] =
       gst_omx_component_new (GST_OBJECT_CAST (self), klass->cdata.core_name,
         klass->cdata.component_name, klass->cdata.component_role,
         klass->cdata.hacks);
 
-  if (!self->camera) {
+  if (!self->comp[CAMERA]) {
     GST_ERROR_OBJECT (self, "Error while creating camera component");
     res = FALSE;
     goto done;
   }
 
-  if (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  if (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_ERROR_OBJECT (self, "Camera state is not loaded");
     res = FALSE;
     goto done;
   }
 
-  if (!gst_omx_component_add_all_ports (self->camera)) {
+  if (!gst_omx_component_add_all_ports (self->comp[CAMERA])) {
     GST_ERROR_OBJECT (self, "Error while adding ports to camera");
     res = FALSE;
     goto done;
   }
 
-  if (!gst_omx_component_all_ports_set_enabled (self->camera, FALSE)) {
+  if (!gst_omx_component_all_ports_set_enabled (self->comp[CAMERA], FALSE)) {
     GST_ERROR_OBJECT (self, "Error while disabling camera ports");
     res = FALSE;
     goto done;
@@ -1550,7 +1554,7 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
     GST_OMX_INIT_STRUCT (&param);
 
     err =
-        gst_omx_component_get_parameter (self->camera, OMX_IndexParamVideoInit,
+        gst_omx_component_get_parameter (self->comp[CAMERA], OMX_IndexParamVideoInit,
         &param);
     if (err != OMX_ErrorNone) {
       GST_WARNING_OBJECT (self, "Couldn't get port information: %s (0x%08x)",
@@ -1565,12 +1569,12 @@ gst_omx_camera_src_start (GstBaseSrc * base_src)
     }
   }
 
-  self->camera_in_port = gst_omx_component_get_port (self->camera,
+  self->port[CAMERA_IN] = gst_omx_component_get_port (self->comp[CAMERA],
       in_port_index);
-  self->camera_out_port = gst_omx_component_get_port (self->camera,
+  self->port[CAMERA_VIDEO_OUT] = gst_omx_component_get_port (self->comp[CAMERA],
       out_port_index);
 
-  if (!self->camera_in_port || !self->camera_out_port) {
+  if (!self->port[CAMERA_IN] || !self->port[CAMERA_VIDEO_OUT]) {
     GST_ERROR_OBJECT (self, "Error while detecting camera ports");
     res = FALSE;
     goto done;
@@ -1647,23 +1651,23 @@ gst_omx_camera_src_stop (GstBaseSrc * base_src)
 
   GST_DEBUG_OBJECT (self, "Stopping");
 
-  if (!self->camera) {
+  if (!self->comp[CAMERA]) {
     GST_DEBUG_OBJECT (self, "Camera not opened, return");
     res = FALSE;
     goto done;
   }
 
-  while (gst_omx_component_get_state (self->camera, GST_CLOCK_TIME_NONE) !=
+  while (gst_omx_component_get_state (self->comp[CAMERA], GST_CLOCK_TIME_NONE) !=
       OMX_StateLoaded) {
     GST_DEBUG_OBJECT (self, "Camera not in loaded state, waiting");
     GST_LIVE_WAIT (self);
   }
 
-  self->camera_in_port = NULL;
-  self->camera_out_port = NULL;
-  if (self->camera)
-    gst_omx_component_free (self->camera);
-  self->camera = NULL;
+  self->port[CAMERA_IN] = NULL;
+  self->port[CAMERA_VIDEO_OUT] = NULL;
+  if (self->comp[CAMERA])
+    gst_omx_component_free (self->comp[CAMERA]);
+  self->comp[CAMERA] = NULL;
   // TODO: On RPi, handle the other components and ports also
 
   self->camera_configured = FALSE;
@@ -1690,7 +1694,7 @@ static GstCaps * gst_omx_camera_src_get_caps (GstBaseSrc * base_src,
   // TODO: Probe caps from camera and video encoder component on RPi
   // Something like this:
   // 1.
-  // formats_camera = gst_omx_port_probe_format (self, self->camera_out_port);
+  // formats_camera = gst_omx_port_probe_format (self, self->port[CAMERA_VIDEO_OUT]);
   // #ifdef USE_OMX_TARGET_RPI
   // formats_encoder = gst_omx_port_probe_format (self, self->encoder_out_port);
   // #endif
@@ -1860,8 +1864,8 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
     gst_video_info_init (self->omx_buf_info);
 
     omx_buf_caps = gst_omx_camera_src_format_caps (self,
-        self->camera_out_port->port_def.format.video.nStride,
-        self->camera_out_port->port_def.format.video.nSliceHeight,
+        self->port[CAMERA_VIDEO_OUT]->port_def.format.video.nStride,
+        self->port[CAMERA_VIDEO_OUT]->port_def.format.video.nSliceHeight,
         1);
 
     if (!gst_video_info_from_caps (self->omx_buf_info, omx_buf_caps)) {
@@ -1986,6 +1990,10 @@ gst_omx_camera_src_finalize (GObject * object)
 
   GstOMXCameraSrc *self = GST_OMX_CAMERA_SRC (object);
 
+  if (self->comp)
+    g_free (self->comp);
+  if (self->port)
+    g_free (self->port);
   if (self->info)
     g_free (self->info);
   if (self->omx_buf_info)

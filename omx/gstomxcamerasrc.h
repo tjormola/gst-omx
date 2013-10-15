@@ -52,9 +52,23 @@ G_BEGIN_DECLS
 #define GST_LIVE_SIGNAL(elem)                 g_cond_signal (GST_LIVE_GET_COND (elem));
 #define GST_LIVE_BROADCAST(elem)              g_cond_broadcast (GST_LIVE_GET_COND (elem));
 
+typedef enum _GstOMXCameraSrcCompIndices GstOMXCameraSrcCompIndices;
+typedef enum _GstOMXCameraSrcPortIndices GstOMXCameraSrcPortIndices;
+
 typedef struct _GstOMXCameraSrc GstOMXCameraSrc;
 typedef struct _GstOMXCameraSrcClass GstOMXCameraSrcClass;
 typedef struct _GstOMXCameraSrcConfig GstOMXCameraSrcConfig;
+
+enum _GstOMXCameraSrcCompIndices
+{
+  CAMERA = 0
+};
+
+enum _GstOMXCameraSrcPortIndices
+{
+  CAMERA_IN = 0,
+  CAMERA_VIDEO_OUT = 1
+};
 
 struct _GstOMXCameraSrcConfig
 {
@@ -82,13 +96,10 @@ struct _GstOMXCameraSrc
   GstOMXSrc parent;
 
   // OMX resources
-  GstOMXComponent *camera;
-  GstOMXPort *camera_in_port;
-  GstOMXPort *camera_out_port;
-  // TODO: On RPi, add other components and ports. Maybe use a dynamic array of
-  // pointers for components and ports and which could be then indexed by an
-  // enum? e.g. self->comp[0] or better self->comp[CAMERA],
-  // self->comp[NULLSINK] and so on.
+  /* Indexed by GstOMXCameraSrcCompIndices */
+  GstOMXComponent **comp;
+  /* Indexed by GstOMXCameraSrcPortIndices */
+  GstOMXPort **port;
 
   // Configuration stuff
   GstOMXCameraSrcConfig config;
