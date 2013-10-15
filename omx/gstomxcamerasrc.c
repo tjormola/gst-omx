@@ -1987,7 +1987,6 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
     GstCaps * caps)
 {
   GstOMXCameraSrc *self = GST_OMX_CAMERA_SRC (base_src);
-  GstVideoInfo *info;
   gboolean res = FALSE;
 
   GST_LIVE_LOCK (self);
@@ -1995,16 +1994,21 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
   GST_DEBUG_OBJECT (self, "Setting format %" GST_PTR_FORMAT, caps);
 
   // TODO: On RPi, this requires updates if encoder is being used
-  info = g_new (GstVideoInfo, 1);
+  if (!self->info)
+    self->info = g_new (GstVideoInfo, 1);
 
-  if (!gst_video_info_from_caps (info, caps)) {
+  gst_video_info_init (self->info);
+
+  if (!gst_video_info_from_caps (self->info, caps)) {
     GST_ERROR_OBJECT (self, "Invalid format %" GST_PTR_FORMAT, caps);
+    if (self->info) {
+      g_free (self->info);
+      self->info = NULL;
+    }
+    res = FALSE;
     goto done;
   }
 
-  if (self->info)
-    g_free (self->info);
-  self->info = info;
   self->accum_rtime += self->running_time;
   self->accum_frames += self->n_frames;
   self->running_time = 0;
@@ -2015,25 +2019,34 @@ static gboolean gst_omx_camera_src_set_caps (GstBaseSrc * base_src,
   // TODO: This needs to go a way when we support other formats than the
   // hard-coded I420. Now it's used in gst_omx_camera_src_poll_frame();
   if (res) {
-    GstVideoInfo *omx_buf_info = g_new (GstVideoInfo, 1);
-    GstCaps *omx_buf_caps = gst_omx_camera_src_format_caps (self,
+    GstCaps *omx_buf_caps;
+
+    if (!self->omx_buf_info)
+      self->omx_buf_info = g_new (GstVideoInfo, 1);
+
+    gst_video_info_init (self->omx_buf_info);
+
+    omx_buf_caps = gst_omx_camera_src_format_caps (self,
         self->camera_out_port->port_def.format.video.nStride,
         self->camera_out_port->port_def.format.video.nSliceHeight,
         1);
-    if (!gst_video_info_from_caps (omx_buf_info, omx_buf_caps)) {
+
+    if (!gst_video_info_from_caps (self->omx_buf_info, omx_buf_caps)) {
       GST_ERROR_OBJECT (self, "Invalid format %" GST_PTR_FORMAT, omx_buf_caps);
-      g_free (omx_buf_info);
+      if (self->omx_buf_info) {
+        g_free (self->omx_buf_info);
+        self->omx_buf_info = NULL;
+      }
       res = FALSE;
     }
-    if (self->omx_buf_info)
-      g_free (self->omx_buf_info);
-    self->omx_buf_info = omx_buf_info;
   }
 
 done:
-  GST_LIVE_UNLOCK (self);
-
   GST_DEBUG_OBJECT (self, "Set caps, %s", (res ? "ok" : "failing"));
+
+  GST_LIVE_BROADCAST (self);
+
+  GST_LIVE_UNLOCK (self);
 
   return res;
 }
@@ -2049,6 +2062,11 @@ static gboolean gst_omx_camera_src_decide_allocation (GstBaseSrc *base_src,
   gboolean update;
 
   GST_LIVE_LOCK (self);
+
+  while (!self->info) {
+    GST_DEBUG_OBJECT (self, "Video capabilities not negotiated, waiting");
+    GST_LIVE_WAIT (self);
+  }
 
   // TODO: On RPi, this requires updates if encoder is being used
   if (gst_query_get_n_allocation_pools (query) > 0) {
