@@ -58,12 +58,14 @@ typedef enum _GstOMXCameraSrcPortIndices GstOMXCameraSrcPortIndices;
 typedef struct _GstOMXCameraSrc GstOMXCameraSrc;
 typedef struct _GstOMXCameraSrcClass GstOMXCameraSrcClass;
 typedef struct _GstOMXCameraSrcConfig GstOMXCameraSrcConfig;
+typedef struct _GstOMXCameraSrcPortFormat GstOMXCameraSrcPortFormat;
 
 enum _GstOMXCameraSrcCompIndices
 {
   CAMERA = 0
 #ifdef USE_OMX_TARGET_RPI
-  ,NULL_SINK = 1
+  ,NULL_SINK = 1,
+  ENCODER = 2
 #endif
 };
 
@@ -73,7 +75,9 @@ enum _GstOMXCameraSrcPortIndices
   CAMERA_VIDEO_OUT = 1
 #ifdef USE_OMX_TARGET_RPI
   ,CAMERA_PREVIEW_OUT = 2,
-  NULL_SINK_IN = 3
+  NULL_SINK_IN = 3,
+  ENCODER_IN = 4,
+  ENCODER_OUT = 5
 #endif
 };
 
@@ -81,6 +85,7 @@ struct _GstOMXCameraSrcConfig
 {
   OMX_PARAM_U32TYPE device;
 #ifdef USE_OMX_TARGET_RPI
+  OMX_VIDEO_PARAM_BITRATETYPE bitrate;
   OMX_CONFIG_SHARPNESSTYPE sharpness;
 #endif
   OMX_CONFIG_GAMMATYPE gamma;
@@ -98,6 +103,14 @@ struct _GstOMXCameraSrcConfig
   gint vertical_flip;
 };
 
+struct _GstOMXCameraSrcPortFormat
+{
+  OMX_VIDEO_CODINGTYPE compression_format;
+  OMX_COLOR_FORMATTYPE color_format;
+  GstCaps * caps_template;
+  gboolean is_packed;
+};
+
 struct _GstOMXCameraSrc
 {
   GstOMXSrc parent;
@@ -111,20 +124,30 @@ struct _GstOMXCameraSrc
   // Configuration stuff
   GstOMXCameraSrcConfig config;
 
+  // Cache for port formats, key is GstOMXPort and value is
+  // GList of GstOMXCameraSrcPortFormat
+  GHashTable * all_port_formats;
+  // Port format matching the used caps
+  GstOMXCameraSrcPortFormat * port_format;
+  // Video image properties matching the used caps
+  GstVideoInfo * info;
+  gint width;
+  gint height;
+  gint fps_n;
+  gint fps_d;
+  gdouble framerate;
+  // This holds the properties of the video image data received
+  // in one OMX buffer if the whole frame data is
+  // fragmented into many OMX buffers
+  GstVideoInfo * omx_buf_info;
+  // OMX port that is used for receiving the output data,
+  // either camera video output port or encoder output port
+  // on RPi if compressed output format is used
+  GstOMXPort * omx_buf_port;
+
   // These are for syncing
   gboolean camera_configured;
   gboolean video_configured;
-
-  // This describes the current video capability
-  // TODO: On RPi, we need something more if encoder is being used
-  GstVideoInfo * info;
-
-  // TODO: This describes the format of a single OMX buffer
-  // in OMX_COLOR_FormatYUV420PackedPlanar format.
-  // Currently that's the only thing we support and this was a quick way to
-  // implement it. Something else needs to be done when we support both raw and
-  // compressed video with RPi.
-  GstVideoInfo * omx_buf_info;
 
   // For the buffer fields
   /* running time and frames for current caps */

@@ -61,16 +61,13 @@ enum
 
 
 G_DEFINE_ABSTRACT_TYPE_WITH_CODE (GstOMXSrc, gst_omx_src,
-    //GST_TYPE_BASE_SRC, DEBUG_INIT);
     GST_TYPE_PUSH_SRC, DEBUG_INIT);
 
 static void
 gst_omx_src_class_init (GstOMXSrcClass * klass)
 {
   klass->cdata.type = GST_OMX_COMPONENT_TYPE_SOURCE;
-  klass->cdata.default_src_template_caps = "video/x-raw, "
-      "width = " GST_VIDEO_SIZE_RANGE ", "
-      "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
+  klass->cdata.default_src_template_caps = "ANY";
 }
 
 static void
